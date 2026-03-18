@@ -1,4 +1,5 @@
 package fr.boutique.servlet;
+
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.*;
@@ -7,26 +8,63 @@ import java.util.*;
 
 @WebServlet("/panier")
 public class PanierServlet extends HttpServlet {
-    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
-        req.getRequestDispatcher("/WEB-INF/jsp/panier.jsp").forward(req, resp);
+
+    @Override
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp)
+            throws ServletException, IOException {
+
+        Map<String, LignePanier> panier = getPanier(req);
+        double total = panier.values().stream()
+                             .mapToDouble(LignePanier::getSousTotal)
+                             .sum();
+
+        req.setAttribute("panier", panier);
+        req.setAttribute("total", total);
+        req.getRequestDispatcher("/WEB-INF/jsp/panier.jsp")
+           .forward(req, resp);
     }
-    protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
-        HttpSession session = req.getSession();
-        Map<String, LignePanier> panier = (Map<String, LignePanier>) session.getAttribute("panier");
-        if (panier == null) { panier = new HashMap<>(); session.setAttribute("panier", panier); }
 
-        String action = req.getParameter("action");
-        String ref = req.getParameter("ref");
+    @Override
+    protected void doPost(HttpServletRequest req, HttpServletResponse resp)
+            throws ServletException, IOException {
 
-        if ("vider".equals(action)) panier.clear();
-        else if ("supprimer".equals(action)) panier.remove(ref);
-        else {
-            Article art = CatalogueServlet.ARTICLES.stream().filter(a -> a.ref().equals(ref)).findFirst().orElse(null);
-            if (art != null) {
-                if (panier.containsKey(ref)) panier.get(ref).setQuantite(panier.get(ref).getQuantite() + 1);
-                else panier.put(ref, new LignePanier(art, 1));
+        req.setCharacterEncoding("UTF-8");
+        String action    = req.getParameter("action");
+        String reference = req.getParameter("reference");
+
+        Map<String, LignePanier> panier = getPanier(req);
+
+        if ("ajouter".equals(action) && reference != null) {
+            Article article = CatalogueServlet.CATALOGUE.stream()
+                .filter(a -> a.getReference().equals(reference))
+                .findFirst().orElse(null);
+
+            if (article != null) {
+                if (panier.containsKey(reference)) {
+                    LignePanier ligne = panier.get(reference);
+                    ligne.setQuantite(ligne.getQuantite() + 1);
+                } else {
+                    panier.put(reference, new LignePanier(article, 1));
+                }
             }
+        } else if ("supprimer".equals(action) && reference != null) {
+            panier.remove(reference);
+        } else if ("vider".equals(action)) {
+            panier.clear();
         }
-        resp.sendRedirect("panier");
+
+        resp.sendRedirect(req.getContextPath() + "/panier");
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, LignePanier> getPanier(HttpServletRequest req) {
+        HttpSession session = req.getSession();
+        Map<String, LignePanier> panier =
+            (Map<String, LignePanier>) session.getAttribute("panier");
+        if (panier == null) {
+            panier = new LinkedHashMap<>();
+            session.setAttribute("panier", panier);
+        }
+        return panier;
     }
 }
